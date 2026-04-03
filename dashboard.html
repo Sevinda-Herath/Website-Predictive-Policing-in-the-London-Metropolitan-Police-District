@@ -17,7 +17,11 @@
               <path d="M12 2C6.477 2 2 6.656 2 12.391c0 4.59 2.865 8.477 6.839 9.856.5.094.682-.224.682-.498 0-.246-.01-1.005-.015-1.822-2.782.623-3.37-1.215-3.37-1.215-.455-1.187-1.11-1.503-1.11-1.503-.908-.643.069-.63.069-.63 1.004.074 1.532 1.065 1.532 1.065.892 1.568 2.341 1.115 2.91.852.091-.666.35-1.115.635-1.371-2.22-.262-4.555-1.142-4.555-5.083 0-1.12.383-2.036 1.012-2.755-.102-.265-.439-1.333.097-2.78 0 0 .824-.27 2.701 1.053a9.06 9.06 0 0 1 2.457-.346c.833.004 1.673.118 2.457.346 1.875-1.323 2.698-1.053 2.698-1.053.538 1.447.2 2.515.098 2.78.63.719 1.01 1.635 1.01 2.755 0 3.951-2.34 4.817-4.568 5.074.359.319.678.947.678 1.91 0 1.379-.012 2.49-.012 2.829 0 .277.18.598.688.496A10.01 10.01 0 0 0 22 12.391C22 6.656 17.523 2 12 2Z" />
             </svg>
           </a>
-          <button class="menu-button" type="button" data-menu-open aria-expanded="false" aria-controls="mobile-menu">Menu</button>
+          <button class="menu-button" type="button" data-menu-open aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -78,7 +82,11 @@
       <div class="mobile-menu-panel">
         <div class="mobile-menu-header">
           <span class="brand">Your Name</span>
-          <button class="menu-close" type="button" data-menu-close>Close</button>
+          <button class="menu-close" type="button" data-menu-close aria-label="Close menu">
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
         <div class="mobile-menu-links">
           <a class="mobile-menu-link" href="index.html" data-menu-link>Home</a>
