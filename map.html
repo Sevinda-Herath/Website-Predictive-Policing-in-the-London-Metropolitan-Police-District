@@ -73,16 +73,27 @@
         </section>
 
         <section class="page-grid">
-          <article class="panel span-8">
+          <article class="panel span-12">
             <p class="card-label">Map area</p>
-            <h2 class="card-title">Insert your map here</h2>
-            <p class="card-text">You can replace this section with an interactive map, chart, or district overview component later.</p>
+            <div class="panel-head">
+              <h2 class="card-title">London Crime Map</h2>
+              <div class="map-actions">
+                <button class="button map-popout-button" type="button" data-map-modal-open>Expand map</button>
+                <a class="button map-popout-button" href="crime_map.html" target="_blank" rel="noopener noreferrer">Open in new tab</a>
+              </div>
+            </div>
+            <p class="card-text">Interactive map loaded from the generated crime map page.</p>
+            <div class="map-embed-wrap">
+              <iframe
+                class="map-embed-frame"
+                src="crime_map.html"
+                title="Crime map"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+              ></iframe>
+            </div>
           </article>
-          <article class="panel span-4">
-            <p class="card-label">Notes</p>
-            <h2 class="card-title">Placeholders only</h2>
-            <p class="card-text">This layout keeps the site simple while leaving room for future spatial content.</p>
-          </article>
+
           <article class="info-card span-6">
             <p class="card-label">Layer 1</p>
             <h2 class="card-title">Area coverage</h2>
@@ -112,6 +123,23 @@
           <span>BSc Data Science Final Year Project by <a href="https://sevinda-herath.github.io" target="_blank">Sevinda Herath</a></span>
         </div>
       </footer>
+    </div>
+
+    <div class="map-modal" data-map-modal aria-hidden="true">
+      <div class="map-modal-dialog" role="dialog" aria-modal="true" aria-label="Expanded crime map">
+        <button class="menu-close map-modal-close" type="button" data-map-modal-close aria-label="Close expanded map">
+          <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+        <iframe
+          class="map-modal-frame"
+          data-map-src="crime_map.html"
+          title="Expanded crime map"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </div>
     </div>
 
     <div class="mobile-menu" id="mobile-menu" data-mobile-menu aria-hidden="true">
