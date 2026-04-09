@@ -13,6 +13,15 @@ function getMapUrl() {
   return new URL('crime_map.html', window.location.href).toString();
 }
 
+function getExpandedMapUrl() {
+  const configuredSrc = expandedMapFrame?.getAttribute('data-map-src');
+  if (configuredSrc) {
+    return new URL(configuredSrc, window.location.href).toString();
+  }
+
+  return getMapUrl();
+}
+
 function syncMapUrlsToCurrentOrigin() {
   const mapUrl = getMapUrl();
   const mapPath = 'crime_map.html';
@@ -22,7 +31,9 @@ function syncMapUrlsToCurrentOrigin() {
   }
 
   // Keep modal iframe unloaded until user opens it.
-  expandedMapFrame?.setAttribute('data-map-src', mapPath);
+  if (expandedMapFrame && !expandedMapFrame.getAttribute('data-map-src')) {
+    expandedMapFrame.setAttribute('data-map-src', mapPath);
+  }
 
   if (mapNewTabLink) {
     mapNewTabLink.href = mapUrl;
@@ -54,7 +65,7 @@ function openMapModal() {
     return;
   }
 
-  const mapUrl = getMapUrl();
+  const mapUrl = getExpandedMapUrl();
 
   if (expandedMapFrame && expandedMapFrame.src !== mapUrl) {
     expandedMapFrame.src = mapUrl;

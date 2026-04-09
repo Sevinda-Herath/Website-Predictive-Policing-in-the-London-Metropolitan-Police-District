@@ -473,6 +473,25 @@ svg {
   border-color: rgba(107, 97, 248, 0.35);
 }
 
+.tableau-viewport {
+  width: 100%;
+  overflow: hidden;
+  background: #0d1117;
+  display: flex;
+  justify-content: center;
+}
+.map-embed-wrap,
+.tableau-shell,
+.tableau-viewport,
+.tableau-scaler {
+  border: none !important;
+  padding: 0 !important;
+}
+
+tableau-viz iframe {
+  border: none !important;
+}
+
 @media (max-width: 900px) {
   .page-grid .span-4,
   .page-grid .span-6,
