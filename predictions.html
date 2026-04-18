@@ -94,12 +94,12 @@
                 <button class="button" type="button" data-api-check>Check API</button>
               </div>
             </div>
-            <p class="card-text">Default API: <strong>http://4.154.77.182:8000</strong>. You can change it if your backend URL changes.</p>
+            <p class="card-text">Default API: <strong>https://api-herath.ddns.net/</strong>. You can change it if your backend URL changes.</p>
             <form class="prediction-form" data-api-form>
               <div class="form-grid two-col">
                 <label class="form-field">
                   <span>API base URL</span>
-                  <input class="input-control" type="url" name="api_base_url" placeholder="http://4.154.77.182:8000" required />
+                  <input class="input-control" type="url" name="api_base_url" placeholder="https://api-herath.ddns.net/" required />
                 </label>
               </div>
               <div class="form-actions">
@@ -146,6 +146,7 @@
                 </label>
               </div>
               <p class="form-help">At least one of LSOA code or LSOA name is required.</p>
+              <p class="form-help" data-lsoa-status>Loading valid LSOA entries...</p>
               <div class="form-actions">
                 <button class="button primary" type="submit">Predict crime count</button>
               </div>

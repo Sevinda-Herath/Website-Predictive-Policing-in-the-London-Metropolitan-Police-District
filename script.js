@@ -10,8 +10,93 @@ const expandedMapFrame = document.querySelector('.map-modal-frame');
 const mapNewTabLink = document.querySelector('.map-actions a[href$="crime_map.html"]');
 const predictionsPage = document.querySelector('[data-predictions-page]');
 
-const DEFAULT_API_BASE_URL = 'http://4.154.77.182:8000';
+const DEFAULT_API_BASE_URL = 'https://api-herath.ddns.net/';
 const API_STORAGE_KEY = 'crimePredictionApiBaseUrl';
+const LSOA_CSV_FILE = 'crime_data_2024.csv';
+const MAX_LSOA_SUGGESTIONS = 50;
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseLsoaEntriesFromCsv(csvText) {
+  const lines = csvText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+  if (!lines.length) {
+    return [];
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  const codeIndex = headers.findIndex((header) => header.toLowerCase() === 'lsoa_code');
+  const nameIndex = headers.findIndex((header) => header.toLowerCase() === 'lsoa_name');
+
+  if (codeIndex === -1 || nameIndex === -1) {
+    return [];
+  }
+
+  const entries = [];
+  const seenEntries = new Set();
+
+  for (let index = 1; index < lines.length; index += 1) {
+    const row = parseCsvLine(lines[index]);
+    const code = String(row[codeIndex] || '').trim();
+    const name = String(row[nameIndex] || '').trim();
+
+    if (!code || !name) {
+      continue;
+    }
+
+    const key = `${code}|||${name}`;
+    if (seenEntries.has(key)) {
+      continue;
+    }
+
+    seenEntries.add(key);
+    entries.push({ code, name });
+  }
+
+  entries.sort((firstEntry, secondEntry) => firstEntry.code.localeCompare(secondEntry.code));
+  return entries;
+}
+
+async function loadLsoaEntriesFromCsv() {
+  const csvUrl = new URL(LSOA_CSV_FILE, window.location.href).toString();
+  const response = await fetch(csvUrl);
+
+  if (!response.ok) {
+    throw new Error('Unable to load LSOA reference data.');
+  }
+
+  const csvText = await response.text();
+  return parseLsoaEntriesFromCsv(csvText);
+}
 
 function getMapUrl() {
   return new URL('crime_map.html', window.location.href).toString();
@@ -339,6 +424,7 @@ function initializePredictionsPage() {
   const apiCheckButton = document.querySelector('[data-api-check]');
   const predictForm = document.querySelector('[data-predict-form]');
   const predictResult = document.querySelector('[data-predict-result]');
+  const lsoaStatus = document.querySelector('[data-lsoa-status]');
   const hotspotsForm = document.querySelector('[data-hotspots-form]');
   const hotspotsTable = document.querySelector('[data-hotspots-table]');
   const hotspotsDownloadButton = document.querySelector('[data-hotspots-download]');
@@ -348,13 +434,152 @@ function initializePredictionsPage() {
   const loadSpecificButton = document.querySelector('[data-load-specific]');
   const genericDownloadButton = document.querySelector('[data-download-generic]');
   const specificDownloadButton = document.querySelector('[data-download-specific]');
+  const lsoaCodeInput = predictForm?.elements?.lsoa_code;
+  const lsoaNameInput = predictForm?.elements?.lsoa_name;
 
   const state = {
     apiBaseUrl: getSavedApiBaseUrl(),
     hotspotRows: [],
     genericRows: [],
     specificRows: [],
+    lsoaEntries: [],
+    lsoaCodeMap: new Map(),
+    lsoaNameToCodes: new Map(),
   };
+
+  const lsoaCodeList = document.createElement('datalist');
+  lsoaCodeList.id = 'lsoa-code-list';
+  const lsoaNameList = document.createElement('datalist');
+  lsoaNameList.id = 'lsoa-name-list';
+
+  if (predictForm && lsoaCodeInput && lsoaNameInput) {
+    predictForm.append(lsoaCodeList, lsoaNameList);
+    lsoaCodeInput.setAttribute('list', lsoaCodeList.id);
+    lsoaNameInput.setAttribute('list', lsoaNameList.id);
+  }
+
+  const setLsoaStatus = (text, stateClass) => {
+    if (!lsoaStatus) {
+      return;
+    }
+
+    lsoaStatus.textContent = text;
+    lsoaStatus.classList.remove('is-ok', 'is-error', 'is-loading');
+
+    if (stateClass) {
+      lsoaStatus.classList.add(stateClass);
+    }
+  };
+
+  const updateLsoaDatalists = (entries) => {
+    lsoaCodeList.textContent = '';
+    lsoaNameList.textContent = '';
+
+    entries.slice(0, MAX_LSOA_SUGGESTIONS).forEach((entry) => {
+      const codeOption = document.createElement('option');
+      codeOption.value = entry.code;
+      codeOption.label = entry.name;
+      lsoaCodeList.append(codeOption);
+
+      const nameOption = document.createElement('option');
+      nameOption.value = entry.name;
+      nameOption.label = entry.code;
+      lsoaNameList.append(nameOption);
+    });
+  };
+
+  const getFilteredLsoaEntries = () => {
+    const codeTerm = String(lsoaCodeInput?.value || '').trim().toLowerCase();
+    const nameTerm = String(lsoaNameInput?.value || '').trim().toLowerCase();
+
+    return state.lsoaEntries.filter((entry) => {
+      const code = entry.code.toLowerCase();
+      const name = entry.name.toLowerCase();
+      const codeMatches = !codeTerm || code.includes(codeTerm) || name.includes(codeTerm);
+      const nameMatches = !nameTerm || name.includes(nameTerm) || code.includes(nameTerm);
+
+      return codeMatches && nameMatches;
+    });
+  };
+
+  const refreshLsoaSuggestions = () => {
+    if (!state.lsoaEntries.length) {
+      return;
+    }
+
+    const filteredEntries = getFilteredLsoaEntries();
+    updateLsoaDatalists(filteredEntries);
+
+    if (!filteredEntries.length) {
+      setLsoaStatus('No valid LSOA entries matched. Try a different code or name.', 'is-error');
+      return;
+    }
+
+    const visibleCount = Math.min(filteredEntries.length, MAX_LSOA_SUGGESTIONS);
+    setLsoaStatus(
+      `Showing ${visibleCount} of ${filteredEntries.length} valid entries from LSOA_Code and LSOA_Name.`,
+      'is-ok',
+    );
+  };
+
+  const syncCodeAndNameInputs = (source) => {
+    const codeValue = String(lsoaCodeInput?.value || '').trim();
+    const nameValue = String(lsoaNameInput?.value || '').trim();
+    const codeMatch = state.lsoaCodeMap.get(codeValue.toLowerCase());
+
+    if (source === 'code' && codeMatch && lsoaNameInput) {
+      lsoaNameInput.value = codeMatch.name;
+      return;
+    }
+
+    if (source === 'name' && nameValue) {
+      const matchingCodes = state.lsoaNameToCodes.get(nameValue.toLowerCase());
+      if (matchingCodes && matchingCodes.size === 1 && lsoaCodeInput) {
+        [lsoaCodeInput.value] = Array.from(matchingCodes);
+      }
+    }
+  };
+
+  const loadLsoaAutocomplete = async () => {
+    if (!predictForm || !lsoaCodeInput || !lsoaNameInput) {
+      return;
+    }
+
+    setLsoaStatus('Loading valid LSOA entries...', 'is-loading');
+
+    try {
+      const entries = await loadLsoaEntriesFromCsv();
+      state.lsoaEntries = entries;
+      state.lsoaCodeMap.clear();
+      state.lsoaNameToCodes.clear();
+
+      entries.forEach((entry) => {
+        state.lsoaCodeMap.set(entry.code.toLowerCase(), entry);
+
+        const nameKey = entry.name.toLowerCase();
+        if (!state.lsoaNameToCodes.has(nameKey)) {
+          state.lsoaNameToCodes.set(nameKey, new Set());
+        }
+
+        state.lsoaNameToCodes.get(nameKey).add(entry.code);
+      });
+
+      refreshLsoaSuggestions();
+      setLsoaStatus(`Loaded ${entries.length} valid LSOA entries. Start typing to filter.`, 'is-ok');
+    } catch (error) {
+      setLsoaStatus(`Could not load valid LSOA entries: ${error.message}`, 'is-error');
+    }
+  };
+
+  lsoaCodeInput?.addEventListener('input', () => {
+    syncCodeAndNameInputs('code');
+    refreshLsoaSuggestions();
+  });
+
+  lsoaNameInput?.addEventListener('input', () => {
+    syncCodeAndNameInputs('name');
+    refreshLsoaSuggestions();
+  });
 
   const updateRowsMetric = () => {
     const totalRows = state.genericRows.length + state.specificRows.length;
@@ -434,14 +659,39 @@ function initializePredictionsPage() {
     event.preventDefault();
 
     const formData = new FormData(predictForm);
-    const lsoaCode = String(formData.get('lsoa_code') || '').trim();
+    const lsoaCodeRaw = String(formData.get('lsoa_code') || '').trim();
+    const lsoaCode = lsoaCodeRaw.toUpperCase();
     const lsoaName = String(formData.get('lsoa_name') || '').trim();
     const year = Number(formData.get('year'));
     const month = Number(formData.get('month'));
 
+    if (lsoaCodeInput && lsoaCodeRaw && lsoaCodeRaw !== lsoaCode) {
+      lsoaCodeInput.value = lsoaCode;
+    }
+
     if (!lsoaCode && !lsoaName) {
       renderSimpleMessage(predictResult, 'Please provide either LSOA code or LSOA name.', 'is-error');
       return;
+    }
+
+    if (state.lsoaEntries.length) {
+      const codeMatch = lsoaCode ? state.lsoaCodeMap.get(lsoaCode.toLowerCase()) : null;
+      const nameCodes = lsoaName ? state.lsoaNameToCodes.get(lsoaName.toLowerCase()) : null;
+
+      if (lsoaCode && !codeMatch) {
+        renderSimpleMessage(predictResult, 'Invalid LSOA code. Start typing to select a valid LSOA entry.', 'is-error');
+        return;
+      }
+
+      if (lsoaName && !nameCodes) {
+        renderSimpleMessage(predictResult, 'Invalid LSOA name. Start typing to select a valid LSOA entry.', 'is-error');
+        return;
+      }
+
+      if (lsoaCode && lsoaName && (!nameCodes || !nameCodes.has(lsoaCode))) {
+        renderSimpleMessage(predictResult, 'LSOA code and LSOA name do not match a valid entry pair.', 'is-error');
+        return;
+      }
     }
 
     const payload = { year, month };
@@ -531,6 +781,7 @@ function initializePredictionsPage() {
     triggerCsvDownload('model_comparison_specific.csv', state.specificRows);
   });
 
+  loadLsoaAutocomplete();
   runApiHealthCheck();
   loadComparison('generic');
   loadComparison('specific');
