@@ -45,7 +45,7 @@
     <link rel="stylesheet" href="styles.css" />
     <script defer src="script.js"></script>
   </head>
-  <body>
+  <body data-predictions-page>
     <div class="site-shell">
       <header class="top-bar">
         <a class="brand" href="https://sevinda-herath.github.io/" target="_blank" rel="noreferrer">Sevinda Herath</a>
@@ -67,28 +67,218 @@
         <section class="page-hero">
           <div class="hero-card">
             <span class="kicker">Predictions</span>
-            <h1 class="page-title">Forecasting space for future outputs.</h1>
-            <p class="page-copy">Use this page to show predictions, risk summaries, or model results once you connect it to your data.</p>
+            <h1 class="page-title">Predict crime count and rank hotspots.</h1>
+            <p class="page-copy">Run LSOA-level predictions, generate top hotspot areas for a selected month, and review model evaluation outputs. The page is connected to your live FastAPI backend.</p>
           </div>
         </section>
 
         <section class="page-grid">
           <article class="metric-card span-4">
-            <span class="metric-number">0.84</span>
-            <span class="metric-text">Example confidence score</span>
+            <span class="metric-number" data-metric="prediction">-</span>
+            <span class="metric-text">Latest predicted crime count</span>
           </article>
           <article class="metric-card span-4">
-            <span class="metric-number">3</span>
-            <span class="metric-text">Forecast bands shown</span>
+            <span class="metric-number" data-metric="hotspot">-</span>
+            <span class="metric-text">Top hotspot prediction</span>
           </article>
           <article class="metric-card span-4">
-            <span class="metric-number">24h</span>
-            <span class="metric-text">Sample prediction window</span>
+            <span class="metric-number" data-metric="rows">0</span>
+            <span class="metric-text">Loaded evaluation rows</span>
           </article>
+
           <article class="panel span-12">
-            <p class="card-label">Forecast panel</p>
-            <h2 class="card-title">Prediction content area</h2>
-            <p class="card-text">This section is intentionally simple so you can later add charts, tables, or an analysis summary without changing the layout.</p>
+            <p class="card-label">API connection</p>
+            <div class="panel-head">
+              <h2 class="card-title">Prediction API settings</h2>
+              <div class="panel-actions">
+                <button class="button" type="button" data-api-check>Check API</button>
+              </div>
+            </div>
+            <p class="card-text">Default API: <strong>http://4.154.77.182:8000</strong>. You can change it if your backend URL changes.</p>
+            <form class="prediction-form" data-api-form>
+              <div class="form-grid two-col">
+                <label class="form-field">
+                  <span>API base URL</span>
+                  <input class="input-control" type="url" name="api_base_url" placeholder="http://4.154.77.182:8000" required />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="button primary" type="submit">Apply API URL</button>
+              </div>
+            </form>
+            <p class="inline-status" data-api-status>API status: not checked</p>
+          </article>
+
+          <article class="panel span-6">
+            <p class="card-label">Predict</p>
+            <h2 class="card-title">Single-area crime count prediction</h2>
+            <p class="card-text">Enter either an LSOA code or LSOA name with month and year.</p>
+            <form class="prediction-form" data-predict-form>
+              <div class="form-grid two-col">
+                <label class="form-field">
+                  <span>LSOA code</span>
+                  <input class="input-control" type="text" name="lsoa_code" placeholder="E01000001" />
+                </label>
+                <label class="form-field">
+                  <span>LSOA name</span>
+                  <input class="input-control" type="text" name="lsoa_name" placeholder="City of London 001A" />
+                </label>
+                <label class="form-field">
+                  <span>Year</span>
+                  <input class="input-control" type="number" name="year" min="1900" max="2100" value="2024" required />
+                </label>
+                <label class="form-field">
+                  <span>Month</span>
+                  <select class="input-control" name="month" required>
+                    <option value="1">1 - January</option>
+                    <option value="2">2 - February</option>
+                    <option value="3">3 - March</option>
+                    <option value="4">4 - April</option>
+                    <option value="5">5 - May</option>
+                    <option value="6">6 - June</option>
+                    <option value="7">7 - July</option>
+                    <option value="8">8 - August</option>
+                    <option value="9">9 - September</option>
+                    <option value="10">10 - October</option>
+                    <option value="11">11 - November</option>
+                    <option value="12">12 - December</option>
+                  </select>
+                </label>
+              </div>
+              <p class="form-help">At least one of LSOA code or LSOA name is required.</p>
+              <div class="form-actions">
+                <button class="button primary" type="submit">Predict crime count</button>
+              </div>
+            </form>
+            <div class="result-box" data-predict-result>
+              Submit the form to view prediction output.
+            </div>
+          </article>
+
+          <article class="panel span-6">
+            <p class="card-label">Hotspots</p>
+            <h2 class="card-title">Top hotspot prediction list</h2>
+            <p class="card-text">Get the highest predicted LSOA hotspots for the selected period.</p>
+            <form class="prediction-form" data-hotspots-form>
+              <div class="form-grid three-col">
+                <label class="form-field">
+                  <span>Year</span>
+                  <input class="input-control" type="number" name="year" min="1900" max="2100" value="2024" required />
+                </label>
+                <label class="form-field">
+                  <span>Month</span>
+                  <select class="input-control" name="month" required>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                    <option value="11">11</option>
+                    <option value="12">12</option>
+                  </select>
+                </label>
+                <label class="form-field">
+                  <span>Top X</span>
+                  <input class="input-control" type="number" name="top_x" min="1" max="500" value="10" required />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="button primary" type="submit">Generate hotspots</button>
+                <button class="button" type="button" data-hotspots-download disabled>Download hotspots CSV</button>
+              </div>
+            </form>
+            <div class="table-wrap">
+              <table class="data-table" data-hotspots-table>
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>LSOA code</th>
+                    <th>LSOA name</th>
+                    <th>Predicted count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colspan="4">Run hotspot prediction to populate this table.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel span-12">
+            <p class="card-label">Model evaluation</p>
+            <div class="panel-head">
+              <h2 class="card-title">Model comparison outputs</h2>
+              <div class="panel-actions">
+                <button class="button" type="button" data-load-generic>Load generic comparison</button>
+                <button class="button" type="button" data-load-specific>Load specific comparison</button>
+              </div>
+            </div>
+            <p class="card-text">Show and export your model evaluation tables directly from the API endpoints.</p>
+
+            <div class="eval-section">
+              <div class="eval-head">
+                <h3>Generic model comparison</h3>
+                <div class="panel-actions">
+                  <button class="button" type="button" data-download-generic disabled>Download generic CSV</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table" data-generic-table>
+                  <thead></thead>
+                  <tbody>
+                    <tr>
+                      <td>Load generic comparison data to display rows.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="eval-section">
+              <div class="eval-head">
+                <h3>Specific model comparison</h3>
+                <div class="panel-actions">
+                  <button class="button" type="button" data-download-specific disabled>Download specific CSV</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table" data-specific-table>
+                  <thead></thead>
+                  <tbody>
+                    <tr>
+                      <td>Load specific comparison data to display rows.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="eval-section">
+              <div class="eval-head">
+                <h3>Evaluation charts</h3>
+                <div class="panel-actions">
+                  <a class="button" data-download-hda href="#">Download HDA image</a>
+                  <a class="button" data-download-mpc href="#">Download MPC image</a>
+                </div>
+              </div>
+              <div class="image-grid">
+                <figure class="image-card">
+                  <figcaption>HDA output</figcaption>
+                  <img data-hda-image alt="HDA evaluation chart" loading="lazy" />
+                </figure>
+                <figure class="image-card">
+                  <figcaption>MPC output</figcaption>
+                  <img data-mpc-image alt="MPC evaluation chart" loading="lazy" />
+                </figure>
+              </div>
+            </div>
           </article>
         </section>
       </main>
