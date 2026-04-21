@@ -12,7 +12,7 @@ const predictionsPage = document.querySelector('[data-predictions-page]');
 
 const DEFAULT_API_BASE_URL = 'https://api-herath.ddns.net/';
 const API_STORAGE_KEY = 'crimePredictionApiBaseUrl';
-const LSOA_CSV_FILE = 'crime_data_2024.csv';
+const LSOA_CSV_FILE = 'crime_data_for_web.csv';
 const MAX_LSOA_SUGGESTIONS = 50;
 
 function parseCsvLine(line) {
