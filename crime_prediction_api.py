@@ -44,7 +44,7 @@ app = FastAPI(
         "Predict crime count using a trained Random Forest model by providing "
         "LSOA code or LSOA name with year and month."
     ),
-    version="1.1.0",
+    version="1.2.0",
     docs_url="/docs",
     openapi_url="/openapi.json",
 )
@@ -166,6 +166,32 @@ def lookup_row(lsoa_code: str | None, lsoa_name: str | None, year: int, month: i
     return matches.iloc[0]
 
 
+def lookup_rows_for_lsoa(lsoa_code: str | None, lsoa_name: str | None) -> pd.DataFrame:
+    assert _df is not None
+
+    if not lsoa_code and not lsoa_name:
+        raise HTTPException(status_code=400, detail="Provide either lsoa_code or lsoa_name.")
+
+    filt = pd.Series(True, index=_df.index, dtype=bool)
+
+    if lsoa_code:
+        code = lsoa_code.strip().lower()
+        filt = filt & (_df["LSOA_Code"].str.lower() == code)
+
+    if lsoa_name:
+        name = lsoa_name.strip().lower()
+        filt = filt & (_df["LSOA_Name"].str.lower() == name)
+
+    matches = _df.loc[filt]
+    if matches.empty:
+        raise HTTPException(
+            status_code=404,
+            detail="No matching LSOA found for the provided code/name.",
+        )
+
+    return matches
+
+
 def build_feature_frame(rows: pd.DataFrame) -> pd.DataFrame:
     feature_frame = rows[_features_used].apply(pd.to_numeric, errors="coerce")
     if feature_frame.isnull().any().any():
@@ -198,6 +224,7 @@ def root() -> dict[str, Any]:
         "swagger_docs": "/docs",
         "openapi_schema": "/openapi.json",
         "health": "/healthz",
+        "lsoa_availability": "/lsoa/availability?lsoa_code=E01000001",
         "model_comparison_generic": "/model-comparison/generic",
         "model_comparison_specific": "/model-comparison/specific",
         "image_hda": "/images/hda",
@@ -215,6 +242,63 @@ def healthz() -> dict[str, Any]:
         "rows_loaded": int(len(_df)),
         "features_used_count": int(len(_features_used)),
         "target": _target_name,
+    }
+
+
+@app.get("/lsoa/availability")
+def get_lsoa_availability(
+    lsoa_code: str | None = None,
+    lsoa_name: str | None = None,
+) -> dict[str, Any]:
+    ensure_loaded()
+
+    normalized_code = lsoa_code.strip() if isinstance(lsoa_code, str) else None
+    normalized_name = lsoa_name.strip() if isinstance(lsoa_name, str) else None
+    matches = lookup_rows_for_lsoa(normalized_code, normalized_name)
+
+    if normalized_name and not normalized_code:
+        unique_codes = sorted(
+            {
+                str(code).strip()
+                for code in matches["LSOA_Code"].tolist()
+                if str(code).strip()
+            }
+        )
+        if len(unique_codes) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Multiple LSOA codes found for this LSOA name. Provide lsoa_code as well.",
+            )
+
+    availability = matches[["Year", "Month"]].copy()
+    availability["Year"] = pd.to_numeric(availability["Year"], errors="coerce")
+    availability["Month"] = pd.to_numeric(availability["Month"], errors="coerce")
+    availability = availability.dropna(subset=["Year", "Month"])
+
+    if availability.empty:
+        raise HTTPException(
+            status_code=404,
+            detail="No year/month availability found for the selected LSOA.",
+        )
+
+    availability["Year"] = availability["Year"].astype(int)
+    availability["Month"] = availability["Month"].astype(int)
+
+    years = sorted(availability["Year"].unique().tolist())
+    months_by_year = {
+        str(year): sorted(
+            availability.loc[availability["Year"] == year, "Month"].unique().tolist()
+        )
+        for year in years
+    }
+
+    representative = matches.iloc[0]
+
+    return {
+        "lsoa_code": str(representative["LSOA_Code"]),
+        "lsoa_name": str(representative["LSOA_Name"]),
+        "years": years,
+        "months_by_year": months_by_year,
     }
 
 

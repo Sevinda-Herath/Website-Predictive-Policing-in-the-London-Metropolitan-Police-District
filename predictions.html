@@ -125,7 +125,9 @@
                 </label>
                 <label class="form-field">
                   <span>Year</span>
-                  <input class="input-control" type="number" name="year" min="1900" max="2100" value="2024" required />
+                  <select class="input-control" name="year" required>
+                    <option value="2024">2024</option>
+                  </select>
                 </label>
                 <label class="form-field">
                   <span>Month</span>
@@ -145,6 +147,7 @@
                   </select>
                 </label>
               </div>
+              <p class="form-help" data-availability-status>Select an LSOA code or name to load available years and months.</p>
               <p class="form-help">At least one of LSOA code or LSOA name is required.</p>
               <p class="form-help" data-lsoa-status>Loading valid LSOA entries...</p>
               <div class="form-actions">

@@ -14,6 +14,21 @@ const DEFAULT_API_BASE_URL = 'https://api-herath.ddns.net/';
 const API_STORAGE_KEY = 'crimePredictionApiBaseUrl';
 const LSOA_CSV_FILE = 'crime_data_for_web.csv';
 const MAX_LSOA_SUGGESTIONS = 50;
+const DEFAULT_PREDICTION_YEAR = 2024;
+const MONTH_LABELS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 function parseCsvLine(line) {
   const values = [];
@@ -436,6 +451,9 @@ function initializePredictionsPage() {
   const specificDownloadButton = document.querySelector('[data-download-specific]');
   const lsoaCodeInput = predictForm?.elements?.lsoa_code;
   const lsoaNameInput = predictForm?.elements?.lsoa_name;
+  const yearSelect = predictForm?.elements?.year;
+  const monthSelect = predictForm?.elements?.month;
+  const availabilityStatus = document.querySelector('[data-availability-status]');
 
   const state = {
     apiBaseUrl: getSavedApiBaseUrl(),
@@ -445,7 +463,12 @@ function initializePredictionsPage() {
     lsoaEntries: [],
     lsoaCodeMap: new Map(),
     lsoaNameToCodes: new Map(),
+    availabilityMonthsByYear: new Map(),
   };
+
+  let availabilityFetchController = null;
+  let availabilityRequestToken = 0;
+  let availabilityDebounceId = 0;
 
   const lsoaCodeList = document.createElement('datalist');
   lsoaCodeList.id = 'lsoa-code-list';
@@ -469,6 +492,250 @@ function initializePredictionsPage() {
     if (stateClass) {
       lsoaStatus.classList.add(stateClass);
     }
+  };
+
+  const setAvailabilityStatus = (text, stateClass) => {
+    if (!availabilityStatus) {
+      return;
+    }
+
+    availabilityStatus.textContent = text;
+    availabilityStatus.classList.remove('is-ok', 'is-error', 'is-loading');
+
+    if (stateClass) {
+      availabilityStatus.classList.add(stateClass);
+    }
+  };
+
+  const getDefaultMonths = () => MONTH_LABELS.map((_, index) => index + 1);
+
+  const populateYearOptions = (years, preferredYear) => {
+    if (!yearSelect) {
+      return;
+    }
+
+    const normalizedYears = Array.from(new Set(
+      years
+        .map((year) => Number(year))
+        .filter((year) => Number.isInteger(year) && year >= 1900 && year <= 2100),
+    )).sort((firstYear, secondYear) => firstYear - secondYear);
+    const yearsToRender = normalizedYears.length ? normalizedYears : [DEFAULT_PREDICTION_YEAR];
+
+    yearSelect.textContent = '';
+
+    yearsToRender.forEach((year) => {
+      const option = document.createElement('option');
+      option.value = String(year);
+      option.textContent = String(year);
+      yearSelect.append(option);
+    });
+
+    const fallbackYear = yearsToRender[yearsToRender.length - 1];
+    const nextYear = yearsToRender.includes(preferredYear) ? preferredYear : fallbackYear;
+    yearSelect.value = String(nextYear);
+  };
+
+  const populateMonthOptions = (months, preferredMonth) => {
+    if (!monthSelect) {
+      return;
+    }
+
+    const normalizedMonths = Array.from(new Set(
+      months
+        .map((month) => Number(month))
+        .filter((month) => Number.isInteger(month) && month >= 1 && month <= 12),
+    )).sort((firstMonth, secondMonth) => firstMonth - secondMonth);
+
+    monthSelect.textContent = '';
+
+    if (!normalizedMonths.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No available months';
+      monthSelect.append(option);
+      monthSelect.setAttribute('disabled', 'true');
+      return;
+    }
+
+    monthSelect.removeAttribute('disabled');
+
+    normalizedMonths.forEach((month) => {
+      const option = document.createElement('option');
+      option.value = String(month);
+      option.textContent = `${month} - ${MONTH_LABELS[month - 1] || `Month ${month}`}`;
+      monthSelect.append(option);
+    });
+
+    const nextMonth = normalizedMonths.includes(preferredMonth)
+      ? preferredMonth
+      : normalizedMonths[0];
+    monthSelect.value = String(nextMonth);
+  };
+
+  const resetAvailabilitySelection = () => {
+    state.availabilityMonthsByYear.clear();
+
+    const preferredMonth = Number(monthSelect?.value);
+    populateYearOptions([DEFAULT_PREDICTION_YEAR], DEFAULT_PREDICTION_YEAR);
+    populateMonthOptions(
+      getDefaultMonths(),
+      Number.isInteger(preferredMonth) && preferredMonth >= 1 && preferredMonth <= 12
+        ? preferredMonth
+        : 1,
+    );
+    setAvailabilityStatus('Select an LSOA code or name to load available years and months.', '');
+  };
+
+  const getAvailabilityQuery = () => {
+    const lsoaCode = String(lsoaCodeInput?.value || '').trim().toUpperCase();
+    const lsoaName = String(lsoaNameInput?.value || '').trim();
+
+    if (!lsoaCode && !lsoaName) {
+      return null;
+    }
+
+    if (!state.lsoaEntries.length) {
+      const query = {};
+      if (lsoaCode) {
+        query.lsoa_code = lsoaCode;
+      }
+      if (lsoaName) {
+        query.lsoa_name = lsoaName;
+      }
+      return query;
+    }
+
+    const codeMatch = lsoaCode ? state.lsoaCodeMap.get(lsoaCode.toLowerCase()) : null;
+    const nameCodes = lsoaName ? state.lsoaNameToCodes.get(lsoaName.toLowerCase()) : null;
+
+    if (lsoaCode && !codeMatch) {
+      return null;
+    }
+
+    if (lsoaName && !nameCodes) {
+      return null;
+    }
+
+    if (lsoaCode && lsoaName && !nameCodes.has(lsoaCode)) {
+      return null;
+    }
+
+    const query = {};
+    if (lsoaCode) {
+      query.lsoa_code = lsoaCode;
+    }
+    if (lsoaName) {
+      query.lsoa_name = lsoaName;
+    }
+
+    return query;
+  };
+
+  const applyAvailabilityPayload = (payload) => {
+    const years = Array.isArray(payload?.years)
+      ? payload.years
+        .map((year) => Number(year))
+        .filter((year) => Number.isInteger(year) && year >= 1900 && year <= 2100)
+      : [];
+    const monthsByYear = payload?.months_by_year && typeof payload.months_by_year === 'object'
+      ? payload.months_by_year
+      : {};
+
+    state.availabilityMonthsByYear.clear();
+
+    years
+      .sort((firstYear, secondYear) => firstYear - secondYear)
+      .forEach((year) => {
+        const months = Array.isArray(monthsByYear[String(year)])
+          ? monthsByYear[String(year)]
+          : [];
+        const normalizedMonths = Array.from(new Set(
+          months
+            .map((month) => Number(month))
+            .filter((month) => Number.isInteger(month) && month >= 1 && month <= 12),
+        )).sort((firstMonth, secondMonth) => firstMonth - secondMonth);
+
+        state.availabilityMonthsByYear.set(year, normalizedMonths);
+      });
+
+    if (!state.availabilityMonthsByYear.size) {
+      throw new Error('No available year and month values were returned for this LSOA.');
+    }
+
+    const previousYear = Number(yearSelect?.value);
+    const previousMonth = Number(monthSelect?.value);
+    const availableYears = Array.from(state.availabilityMonthsByYear.keys()).sort(
+      (firstYear, secondYear) => firstYear - secondYear,
+    );
+
+    populateYearOptions(availableYears, previousYear);
+
+    const activeYear = Number(yearSelect?.value);
+    const monthsForYear = state.availabilityMonthsByYear.get(activeYear) || [];
+    populateMonthOptions(monthsForYear, previousMonth);
+
+    setAvailabilityStatus(
+      `Available years: ${availableYears.join(', ')}. Showing ${monthsForYear.length} month(s) for ${activeYear}.`,
+      'is-ok',
+    );
+  };
+
+  const loadAvailabilityForCurrentLsoa = async () => {
+    const query = getAvailabilityQuery();
+
+    if (!query) {
+      const hasTypedLsoa = Boolean(String(lsoaCodeInput?.value || '').trim() || String(lsoaNameInput?.value || '').trim());
+      if (!hasTypedLsoa) {
+        resetAvailabilitySelection();
+      } else {
+        setAvailabilityStatus('Enter a valid LSOA code or exact LSOA name to load available years and months.', '');
+      }
+      return;
+    }
+
+    availabilityRequestToken += 1;
+    const activeToken = availabilityRequestToken;
+
+    if (availabilityFetchController) {
+      availabilityFetchController.abort();
+    }
+
+    availabilityFetchController = new AbortController();
+    setAvailabilityStatus('Loading available years and months...', 'is-loading');
+
+    try {
+      const queryString = new URLSearchParams(query).toString();
+      const payload = await fetchJson(state.apiBaseUrl, `/lsoa/availability?${queryString}`, {
+        signal: availabilityFetchController.signal,
+      });
+
+      if (activeToken !== availabilityRequestToken) {
+        return;
+      }
+
+      applyAvailabilityPayload(payload);
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+
+      if (activeToken !== availabilityRequestToken) {
+        return;
+      }
+
+      const hint = getNetworkFailureHint(state.apiBaseUrl, error);
+      setAvailabilityStatus(`Could not load available years/months: ${error.message}.${hint}`.replace('..', '.'), 'is-error');
+    }
+  };
+
+  const queueAvailabilityLoad = () => {
+    if (availabilityDebounceId) {
+      window.clearTimeout(availabilityDebounceId);
+    }
+
+    availabilityDebounceId = window.setTimeout(() => {
+      loadAvailabilityForCurrentLsoa();
+    }, 350);
   };
 
   const updateLsoaDatalists = (entries) => {
@@ -520,6 +787,32 @@ function initializePredictionsPage() {
       `Showing ${visibleCount} of ${filteredEntries.length} valid entries from LSOA_Code and LSOA_Name.`,
       'is-ok',
     );
+  };
+
+  const showDefaultLsoaSuggestions = () => {
+    if (!state.lsoaEntries.length) {
+      return;
+    }
+
+    updateLsoaDatalists(state.lsoaEntries);
+
+    const visibleCount = Math.min(state.lsoaEntries.length, MAX_LSOA_SUGGESTIONS);
+    setLsoaStatus(
+      `Showing ${visibleCount} of ${state.lsoaEntries.length} valid entries from LSOA_Code and LSOA_Name.`,
+      'is-ok',
+    );
+  };
+
+  const tryOpenDatalist = (inputElement) => {
+    if (!inputElement || typeof inputElement.showPicker !== 'function') {
+      return;
+    }
+
+    try {
+      inputElement.showPicker();
+    } catch (error) {
+      // Some browsers block showPicker() depending on context; silently ignore.
+    }
   };
 
   const syncCodeAndNameInputs = (source) => {
@@ -574,11 +867,46 @@ function initializePredictionsPage() {
   lsoaCodeInput?.addEventListener('input', () => {
     syncCodeAndNameInputs('code');
     refreshLsoaSuggestions();
+    queueAvailabilityLoad();
+  });
+
+  lsoaCodeInput?.addEventListener('focus', () => {
+    showDefaultLsoaSuggestions();
+    tryOpenDatalist(lsoaCodeInput);
+  });
+
+  lsoaCodeInput?.addEventListener('click', () => {
+    showDefaultLsoaSuggestions();
+    tryOpenDatalist(lsoaCodeInput);
   });
 
   lsoaNameInput?.addEventListener('input', () => {
     syncCodeAndNameInputs('name');
     refreshLsoaSuggestions();
+    queueAvailabilityLoad();
+  });
+
+  lsoaNameInput?.addEventListener('focus', () => {
+    showDefaultLsoaSuggestions();
+    tryOpenDatalist(lsoaNameInput);
+  });
+
+  lsoaNameInput?.addEventListener('click', () => {
+    showDefaultLsoaSuggestions();
+    tryOpenDatalist(lsoaNameInput);
+  });
+
+  yearSelect?.addEventListener('change', () => {
+    if (!state.availabilityMonthsByYear.size) {
+      return;
+    }
+
+    const activeYear = Number(yearSelect.value);
+    const monthsForYear = state.availabilityMonthsByYear.get(activeYear) || [];
+    const previousMonth = Number(monthSelect?.value);
+
+    populateMonthOptions(monthsForYear, previousMonth);
+    setAvailabilityStatus(`Showing ${monthsForYear.length} available month(s) for ${activeYear}.`, 'is-ok');
   });
 
   const updateRowsMetric = () => {
@@ -651,6 +979,7 @@ function initializePredictionsPage() {
     window.localStorage.setItem(API_STORAGE_KEY, nextValue);
     configureEvaluationImages(state.apiBaseUrl);
     setStatusState(apiStatus, `API status: Saved ${state.apiBaseUrl}`, 'is-ok');
+    loadAvailabilityForCurrentLsoa();
   });
 
   apiCheckButton?.addEventListener('click', runApiHealthCheck);
@@ -671,6 +1000,16 @@ function initializePredictionsPage() {
 
     if (!lsoaCode && !lsoaName) {
       renderSimpleMessage(predictResult, 'Please provide either LSOA code or LSOA name.', 'is-error');
+      return;
+    }
+
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+      renderSimpleMessage(predictResult, 'Please choose a valid year.', 'is-error');
+      return;
+    }
+
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      renderSimpleMessage(predictResult, 'Please choose an available month.', 'is-error');
       return;
     }
 
@@ -781,6 +1120,7 @@ function initializePredictionsPage() {
     triggerCsvDownload('model_comparison_specific.csv', state.specificRows);
   });
 
+  resetAvailabilitySelection();
   loadLsoaAutocomplete();
   runApiHealthCheck();
   loadComparison('generic');
